@@ -9,6 +9,13 @@
 #$ -cwd
 #$ -V
 
+declare file_mrc
+declare file_mod
+declare path_ehs
+declare path_out
+declare dimx
+declare dimy
+
 # Source IMOD
 source /home/aperez/.bashrc
 
@@ -21,8 +28,8 @@ mkdir "${path_out}"/labels
 mkdir "${path_out}"/tmp
 
 # Get the box "radii" as 1/2 dimx and 1/2 dimy
-radx="$(echo ""${dimx}" / 2" | bc)"
-rady="$(echo ""${dimy}" / 2" | bc)"
+radx="$(echo "${dimx} / 2" | bc)"
+rady="$(echo "${dimy} / 2" | bc)"
 
 # Get the y dimension of the full image
 mrc_dims="$(header -size "${file_mrc}")"
@@ -34,13 +41,13 @@ img_y=${mrc_dims[1]}
 i=0
 obj=0
 cont_toggle=false
-while read line; do
+while read -r line; do
     case "${line}" in
         *object*)
             # Increment the object counter when a new object is encountered.
             # Break the loop when the second object containing the contours
             # is encountered.
-            if [[ "${obj}" < 2 ]]; then
+            if [[ "${obj}" -lt 2 ]]; then
                 ((obj++))
             else
                 break
@@ -79,14 +86,9 @@ for ((i=0;i<=$((n_seeds-1));i++)); do
 
     # Determine the i-th bounding box
     xmin=$((xi - radx))
-    xmax=$((xi + radx + 1))
+    xmax=$((xi + radx - 1))
     ymin=$((yi - rady))
-    ymax=$((yi + rady + 1))
-
-    echo $dimx $dimy
-    echo $radx $rady
-    echo $xi $yi $zi
-    echo $xmin $xmax $ymin $ymax
+    ymax=$((yi + rady - 1))
 
     # Trim the i-th bounding box from the input mrc stack and store to a temp
     # MRC file.
@@ -110,12 +112,14 @@ for ((i=0;i<=$((n_seeds-1));i++)); do
     rm -rf "${path_out}"/tmp/"${fname_i}".mrc
 
     # Determine the PNG file to crop from for training images.
-    img_i="$(ls "${path_ehs}" | sed -n ''$((zi+1))'p')"
+    img_i="$(find "${path_ehs}" -maxdepth 1 -name "*.png" \
+        | sort \
+        | sed -n ''$((zi+1))'p')"
 
     # Crop the image using ImageMagick convert.
     /home/aperez/usr/local/bin/convert \
-        "${path_ehs}"/"${img_i}" \
-        -crop ${dimx}x${dimx}+${xmin}+$((img_y - ymax)) \
+        "${img_i}" \
+        -crop "${dimx}"x"${dimx}"+"${xmin}"+$((img_y - ymax)) \
         "${path_out}"/images/"${fname_i}".png
 done
 
