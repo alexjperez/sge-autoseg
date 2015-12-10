@@ -105,7 +105,7 @@ fi
 obj=0
 obj_type[1]=0
 obj_type[2]=0
-while read line; do
+while read -r line; do
     case "${line}" in
         imod*)
             # Check that the model file has exactly two objects.
@@ -143,7 +143,7 @@ if [[ ! -d "${path_ehs}" ]]; then
 fi
 
 # Check that path_ehs contains PNG files
-n_png_ehs="$(ls "${path_ehs}"/*.png 2> /dev/null | wc -l)"
+n_png_ehs="$(find "${path_ehs}" -maxdepth 1 -name "*.png" 2> /dev/null | wc -l)"
 if [[ ${n_png_ehs} == 0 ]]; then
     print_err "The directory given by path_ehs does not contain PNGs."
 fi
@@ -152,14 +152,15 @@ fi
 # PNG files in path_ehs.
 dims_mrc="$(header -size "${file_mrc}")"
 dims_mrc=($dims_mrc)
+
 if [[ ${n_png_ehs} -ne ${dims_mrc[2]} ]]; then
     print_err "Mismatch between slices in the MRC and the number of PNG files."
 fi
 
 # Check that the lateral dimensions of file_mrc are equal to the lateral 
 # dimensions of the first PNG file in path_ehs.
-file_png_test="$(ls "${path_ehs}" | head -1)"
-dims_png="$(identify -ping -format "%w %h" "${path_ehs}"/"${file_png_test}")"
+file_png_test="$(find "${path_ehs}" -maxdepth 1 -name "*.png" | sort | head -1)"
+dims_png="$(identify -ping -format "%w %h" "${file_png_test}")"
 dims_png=($dims_png)
 if [[ ${dims_mrc[0]} -ne ${dims_png[0]} ]] || \
     [[ ${dims_mrc[1]} -ne ${dims_png[1]} ]]; then
