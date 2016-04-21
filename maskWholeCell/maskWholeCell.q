@@ -1,12 +1,8 @@
 #! /bin/bash
 
 #$ -S /bin/bash
-#$ -N mask
-#$ -m eas
-#$ -M alexjperez@outlook.com
 #$ -cwd
 #$ -V
-#$ -q default.q
 
 declare file_mrc
 declare path_mod
