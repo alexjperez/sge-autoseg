@@ -34,15 +34,38 @@ Optional Arguments:
     Path to save training images and labels to. 
     DEFAULT: ./training_data
 
+-m | --mailto
+    Email address to send job logs to.
+    DEFAULT: None.
+
+-j | --jobname
+    Job name to submit with.
+    DEFAULT: 'processTD'
+
 -h | --help
-        Display this help
+    Display this help
 END
 exit "$1"
 }
 
 function print_err () {
+    # Prints specified error message and exits with a status of 1.
     printf "ERROR: %s\n\n" "${1}" >&2
     usage 1
+}
+
+function check_mrc () {
+    # Checks the validity of an input MRC file in two ways. First, checks to
+    # see if the file exists. If so, the IMOD program header will be run on 
+    # the MRC file. If the exit status is 1, the MRC file is not valid.
+    if [[ ! -f "$1" ]]; then
+        print_err "The specified MRC file does not exist."
+    fi
+    
+    header "$1" > /dev/null
+    if [[ "$?" == 1 ]]; then
+        print_err "The specified MRC file is not in the valid MRC format."
+    fi
 }
 
 # Parse optional arguments
@@ -56,6 +79,16 @@ while :; do
 	    shift 2
 	    continue
 	    ;;
+        -m|--mailto)
+            mailto=$2
+            shift 2
+            continue
+            ;;
+        -j|--jobname)
+            jobname=$2
+            shift 2
+            continue
+            ;;
         *)
             break
     esac
@@ -71,23 +104,12 @@ file_mod=${2}
 path_ehs=${3}
 dim=${4}
 
-# Set default path if necessary
-if [[ ! "${path_out}" ]]; then
-    path_out="./training_data"
-fi
-
-# Source IMOD
-source /home/aperez/.bashrc
+# Set defaults, if necessary
+path_out="${path_out:-training_data}"
+jobname="${jobname:-processTD}"
 
 # Check validity of file_mrc
-if [[ ! -f "${file_mrc}" ]]; then
-    print_err "The specified MRC file does not exist."
-fi
-
-header "${file_mrc}" > /dev/null
-if [[ "$?" == 1 ]]; then
-    print_err "The specified MRC file is not a valid MRC file."
-fi
+check_mrc "${file_mrc}"
 
 # Check validity of file_mod
 if [[ ! -f "${file_mod}" ]]; then
@@ -177,11 +199,23 @@ fi
 IFS=","
 read -ra train_dims <<< "${dim}"
 
-qsub \
-    -v file_mrc="${file_mrc}" \
-    -v file_mod="${file_mod}" \
-    -v path_ehs="${path_ehs}" \
-    -v path_out="${path_out}" \
-    -v dimx="${train_dims[0]}" \
-    -v dimy="${train_dims[1]}" \
-    process_training_data.q
+# Build qsub submit string
+qstr="-N ${jobname} "
+qstr+="-v file_mrc=${file_mrc} "
+qstr+="-v file_mod=${file_mod} "
+qstr+="-v path_ehs=${path_ehs} "
+qstr+="-v path_out=${path_out} "
+qstr+="-v dimx=${train_dims[0]} "
+qstr+="-v dimy=${train_dims[1]} "
+
+if [[ ! -z "${mailto+x}" ]]; then
+    qstr+="-m eas -M ${mailto} "
+fi
+
+# Specify certain queues to submit to, depending on the cluster
+if [[ "$HOSTNAME" == "megashark.crbs.ucsd.edu" ]]; then
+    qstr+="-q default.q "
+fi
+
+# Submit job
+qsub "${qstr}" process_training_data.q
