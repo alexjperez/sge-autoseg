@@ -33,8 +33,7 @@ img_y=${mrc_dims[1]}
 i=0
 obj=0
 cont_toggle=false
-while read -r line; do
-    case "${line}" in
+while read -r line; do case "${line}" in
         *object*)
             # Increment the object counter when a new object is encountered.
             # Break the loop when the second object containing the contours
