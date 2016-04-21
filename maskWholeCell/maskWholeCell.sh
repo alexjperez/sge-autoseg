@@ -30,6 +30,14 @@ Optional Arguments:
     Path to save output masked model files to.
     DEFAULT: ./output
 
+-m | --mailto
+    Email address to send job logs to.
+    DEFAULT: None.
+
+-j | --jobname
+    Job name to submit with.
+    DEFAULT: 'mask'
+
 -h | --help
     Display this help.
 END
@@ -37,11 +45,15 @@ exit "$1"
 }
 
 function print_err () {
+    # Prints specified error message and exits with a status of 1.
     printf "ERROR: %s\n\\n" "${1}" >&2
     usage 1
 }
 
 function check_mrc () {
+    # Checks the validity of an input MRC file in two ways. First, checks to
+    # see if the file exists. If so, the IMOD program header will be run on 
+    # the MRC file. If the exit status is 1, the MRC file is not valid.
     if [[ ! -f "$1" ]]; then
         print_err "The specified MRC file does not exist."
     fi
@@ -64,6 +76,16 @@ while :; do
             shift 2
             continue
             ;;
+        -m|--mailto)
+            mailto=$2
+            shift 2
+            continue
+            ;;
+        -j|--jobname)
+            jobname=$2
+            shift 2
+            continue
+            ;;
         *)
             break
     esac
@@ -78,8 +100,9 @@ file_mrc=${1}
 path_mod=${2}
 path_seg=${3}
 
-# Set default output path, if necessary
+# Set defaults, if necessary
 path_out="${path_out:-output}"
+jobname="${jobname:-mask}"
 
 # Check validity of file_mrc
 check_mrc "${file_mrc}"
@@ -146,13 +169,24 @@ if [[ ! -d "${path_out}" ]]; then
     mkdir "${path_out}" "${path_out}"/log "${path_out}"/err
 fi
 
-# Submit SGE script
-qsub \
-    -t 1-"${nmod}" \
-    -v file_mrc="${file_mrc}" \
-    -v path_seg="${path_seg}" \
-    -v path_mod="${path_mod}" \
-    -v path_out="${path_out}" \
-    -o "${path_out}"/log \
-    -e "${path_out}"/err \
-    maskWholeCell.q 
+# Build qsub submit string
+qstr="-N ${jobname} "
+qstr+="-t 1-${nmod} "
+qstr+="-v file_mrc=${file_mrc} "
+qstr+="-v path_seg=${path_seg} "
+qstr+="-v path_mod=${path_mod} "
+qstr+="-v path_out=${path_out} "
+qstr+="-o ${path_out}/log "
+qstr+="-e ${path_out}/err "
+
+if [[ ! -z "${mailto+x}" ]]; then
+    qstr+="-m eas -M ${mailto} "
+fi
+
+# Specify certain queues to submit to, depending on the cluster
+if [[ "$HOSTNAME" == "megashark.crbs.ucsd.edu" ]]; then
+    qstr+="-q default.q "
+fi
+
+# Submit job
+qsub "${qstr}" maskWholeCell.q
