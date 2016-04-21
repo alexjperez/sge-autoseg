@@ -189,4 +189,4 @@ if [[ "$HOSTNAME" == "megashark.crbs.ucsd.edu" ]]; then
 fi
 
 # Submit job
-qsub "${qstr}" maskWholeCell.q
+qsub ${qstr} maskWholeCell.q

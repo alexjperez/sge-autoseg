@@ -218,4 +218,4 @@ if [[ "$HOSTNAME" == "megashark.crbs.ucsd.edu" ]]; then
 fi
 
 # Submit job
-qsub "${qstr}" process_training_data.q
+qsub ${qstr} process_training_data.q
