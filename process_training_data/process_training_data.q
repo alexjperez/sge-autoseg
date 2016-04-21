@@ -1,11 +1,6 @@
 #!/bin/bash
 
 #$ -S /bin/bash
-#$ -N processTD
-#$ -j yes
-#$ -m eas
-#$ -M alexjperez@outlook.com
-#$ -l h_vmem=5G
 #$ -cwd
 #$ -V
 
@@ -15,9 +10,6 @@ declare path_ehs
 declare path_out
 declare dimx
 declare dimy
-
-# Source IMOD
-source /home/aperez/.bashrc
 
 # Make output directories
 if [[ ! -d "${path_out}" ]]; then
