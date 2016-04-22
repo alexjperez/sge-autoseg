@@ -25,8 +25,9 @@ def parse_args():
                  default = False,
                  dest = "runImodfillin",
                  help = "Runs imodfillin to interpolate missing contours in "
-                        "file.mod. The number of slices to skip is specified "
-                        "by the flag --slicesToSkip. (Default: False)") 
+                        "file.mod before masking. The number of slices to skip "
+                        "is specified by the flag --slicesToSkip. (Default: "
+                        "False)") 
     p.add_option("--slicesToSkip",
                  dest = "slicesToSkip",
                  metavar = "INT",
@@ -35,6 +36,22 @@ def parse_args():
                         "contours with imodfillin. The value specified here "
                         "is used as input to the -s flag in imodmesh. (Default: "
                         "10.")
+    p.add_option("--imodautor",
+                 dest = "imodautor",
+                 metavar = "FLOAT",
+                 default = 0,
+                 help = "Tolerance for point shaving when running imodauto. "
+                        "The value specified here is used as input to the -R "
+                        "flag of imodauto. Must range from 0-1. (Default: 0, "
+                        "which means point shaving is turned off.")
+    p.add_option("--imodautok",
+                 dest = "imodautok",
+                 metavar = "FLOAT",
+                 default = 0, 
+                 help = "Smooths the segmentation image with a kernel filter "
+                        "whose Gaussian sigma is given by the specified value. "
+                        "The value entered here is used as input to the -k flag "
+                        "of imodauto. (Default: Turned off.")
     (opts, args) = p.parse_args()
     file_mrc, file_mod, path_seg = check_args(args)
     return opts, file_mrc, file_mod, path_seg
@@ -178,9 +195,14 @@ if __name__ == "__main__":
         imgMask.astype('uint8')
         misc.imsave(file_tmp + '.tif', imgMask) 
 
-        # Run imodauto
-        cmd = 'imodauto -E 255 -u {0} {1}'.format(file_tmp + '.tif',
+        # Run imodauto. First, construct a string of options based upon the 
+        # user input from flags. 
+        iastr = '-E 255 -u -R {0}'.format(opts.imodautor)
+        if opts.imodautok:
+            iastr += ' -k {0}'.format(opts.imodautok) 
+        cmd = 'imodauto {0} {1} {2}'.format(iastr, file_tmp + '.tif',
             file_tmp + '.mod')
+        print cmd
         call(cmd.split())
         os.remove(file_tmp + '.tif')
 
@@ -216,6 +238,3 @@ if __name__ == "__main__":
     # Convert point listing to final model file
     cmd = 'point2model -image {0} {1} {2}'.format(file_mrc, file_out + '.txt',
         file_out + '.mod')
-
-
- 
