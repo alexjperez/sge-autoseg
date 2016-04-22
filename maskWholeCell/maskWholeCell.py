@@ -16,26 +16,23 @@ from sys import stderr, exit, argv
 def parse_args():
     global p
     p = OptionParser(usage = "%prog [options] file.mrc file.mod path_seg")
-    p.add_option("--output",
-                 dest = "path_out",
-                 metavar = "PATH",
-                 help = "Output path to save to (DEFAULT = Current directory.")
-    p.add_option("--runImodfillin",
-                 action = "store_true",
-                 default = False,
-                 dest = "runImodfillin",
-                 help = "Runs imodfillin to interpolate missing contours in "
-                        "file.mod before masking. The number of slices to skip "
-                        "is specified by the flag --slicesToSkip. (Default: "
-                        "False)") 
-    p.add_option("--slicesToSkip",
-                 dest = "slicesToSkip",
+    p.add_option("--color",
+                 dest = "color",
+                 metavar = "R,G,B",
+                 help = "Color to make all output objects, entered as a string "
+                        "of comma-separated R, G, B values. E.g. ('1,0,0', "
+                        "'0,1,1'). (Default: Turned off).")
+    p.add_option("--filterByNContours",
+                 dest = "filterByNContours",
                  metavar = "INT",
-                 default = 10,
-                 help = "Number of slices to skip when interpolating missing "
-                        "contours with imodfillin. The value specified here "
-                        "is used as input to the -s flag in imodmesh. (Default: "
-                        "10.")
+                 default = 0,
+                 help = "Low threshold for object removal based on number "
+                        "of contours. All objects containing a number of "
+                        "contours less than or equal to the value entered "
+                        "here will be removed. For example, if 3 is entered, "
+                        "all objects with 3 or fewer contours will be deleted "
+                        "and all objects with 4 or more contours will be "
+                        "retained. (Default: Turned off).")
     p.add_option("--imodautor",
                  dest = "imodautor",
                  metavar = "FLOAT",
@@ -47,11 +44,61 @@ def parse_args():
     p.add_option("--imodautok",
                  dest = "imodautok",
                  metavar = "FLOAT",
-                 default = 0, 
+                 default = 0,  
                  help = "Smooths the segmentation image with a kernel filter "
                         "whose Gaussian sigma is given by the specified value. "
                         "The value entered here is used as input to the -k flag "
                         "of imodauto. (Default: Turned off.")
+    p.add_option("--mergeAll",
+                 action = "store_true",
+                 default = False,
+                 dest = "mergeAll",
+                 help = "Merges all output, masked objects into one final "
+                        "object. This option is useful in cases where you want "
+                        "to separate objects, filter them, and then rejoin. "
+                        "(Default: False)")
+    p.add_option("--name",
+                 dest = "name",
+                 metavar = "STRING",
+                 help = "Name to assign to all output objects, entered as a "
+                        "string. E.g. ('mitochondrion', 'nucleus'). (Default: "
+                        "Turned off)")  
+    p.add_option("--output",
+                 dest = "path_out",
+                 metavar = "PATH",
+                 help = "Output path to save to (DEFAULT = Current directory.")
+    p.add_option("--runImodfillin",
+                 action = "store_true",
+                 default = False,
+                 dest = "runImodfillin",
+                 help = "Runs imodfillin to interpolate missing contours in "
+                        "file.mod before masking. The number of slices to skip "
+                        "is specified by the flag --slicesToSkipCell. (Default: "
+                        "False)") 
+    p.add_option("--runPostprocessing",
+                 action = "store_true",
+                 default = False,
+                 dest = "runPostprocessing",
+                 help = "Runs postprocessing routine on the masked output. "
+                        "First, imodmesh is run to mesh the entire output as "
+                        "one object. Then, imodsortsurf is run to split the "
+                        "meshed object into separate objects based on 3D conn- "
+                        "ectivity. (Default: False)")
+    p.add_option("--slicesToSkipCell",
+                 dest = "slicesToSkipCell",
+                 metavar = "INT",
+                 default = 10,
+                 help = "Number of slices to skip when interpolating missing "
+                        "contours of the cell trace with imodfillin. The value "
+                        "specified here is used as input to the -P flag in "
+                        "imodmesh. (Default: 10)")
+    p.add_option("--slicesToSkipOrganelle",
+                 dest = "slicesToSkipOrganelle",
+                 metavar = "INT",
+                 default = 4,
+                 help = "Number of slices to skep when meshing the final, "
+                        "masked results. The value specified here is used as "
+                        "input to the -P flag in imodmesh. (Default: 4)")
     (opts, args) = p.parse_args()
     file_mrc, file_mod, path_seg = check_args(args)
     return opts, file_mrc, file_mod, path_seg
@@ -116,7 +163,7 @@ if __name__ == "__main__":
 
     # Run imodfillin, if desired. First, existing mesh data is removed and
     # replaced with a new mesh obtained by skipping across a number of slices,
-    # specified by the optional argument --slicesToSkip. Imodfillin is then 
+    # specified by the optional argument --slicesToSkipCell. Imodfillin is then 
     # run with the -e flag, so that contours are appended to the existing
     # object. 
     if opts.runImodfillin:
@@ -124,7 +171,7 @@ if __name__ == "__main__":
         print '# Contours before: {0}'.format(mod.Objects[0].nContours)
         mod = pyimod.utils.ImodCmd(mod, 'imodmesh -e')
         mod = pyimod.utils.ImodCmd(mod,
-            'imodmesh -CTs -P {0}'.format(opts.slicesToSkip))
+            'imodmesh -CTs -P {0}'.format(opts.slicesToSkipCell))
         mod = pyimod.utils.ImodCmd(mod, 'imodfillin -e') 
         print '# Contours after: {0}'.format(mod.Objects[0].nContours)
 
@@ -163,6 +210,10 @@ if __name__ == "__main__":
     # Get list of all segmented organelle files
     filesOrg = sorted(glob.glob(os.path.join(path_seg , '*')))
 
+    # Write edited model file to disk
+    file_cell = os.path.join(path_tmp, 'cell.mod')
+    pyimod.ImodWrite(mod, file_cell)
+ 
     # Loop over all Z values in the cell trace 
     C = 0
     for zi in zlist:
@@ -171,7 +222,7 @@ if __name__ == "__main__":
         # imodmop to mask the cell, and then convert it to TIF using mrc2tif. 
         file_tmp = os.path.join(path_tmp, str(zi).zfill(4))
         cmd = 'imodmop -mask 1 -zminmax {0},{0} {1} {2} {3}'.format(zi - 1,
-            file_mod, file_mrc, file_tmp + '.mrc')
+            file_cell, file_mrc, file_tmp + '.mrc')
         call(cmd.split())
         cmd = 'mrc2tif {0} {1}'.format(file_tmp + '.mrc', file_tmp + '.tif')
         call(cmd.split())
@@ -234,7 +285,45 @@ if __name__ == "__main__":
                         outfile.write(newline)
             C = C + ncont    
         os.remove(file_tmp + '.txt') 
+    os.remove(file_cell)
 
     # Convert point listing to final model file
     cmd = 'point2model -image {0} {1} {2}'.format(file_mrc, file_out + '.txt',
         file_out + '.mod')
+
+    # Run postprocessing, if necessary
+    if opts.runPostprocessing:
+        mod = pyimod.ImodModel(file_out + '.mod')       
+ 
+        # Remove existing mesh information
+        mod = pyimod.utils.ImodCmd(mod, 'imodmesh -e')
+
+        # Remesh
+        mod = pyimod.utils.ImodCmd(mod,
+            'imodmesh -CTs -P {0}'.format(opts.slicesToSkipOrganelle))
+
+        # Run imodsortsurf
+        mod = pyimod.utils.ImodCmd(mod, 'imodsortsurf -s')
+
+        # Filter objects by number of contours, if necessary
+        if opts.filterByNContours:
+            mod.filterByNContours('>', opts.filterByNContours)
+
+        # Merge objects, if necessary
+        if opts.mergeAll:
+            mod.moveObjects(1, '2-{0}'.format(mod.nObjects))
+
+        # Remesh
+        mod = pyimod.utils.ImodCmd(mod, 'imodmesh -e')
+        mod = pyimod.utils.ImodCmd(mod, 
+            'imodmesh -CTs -P {0}'.format(opts.slicesToSkipOrganelle))   
+
+        # Set name and color across all objects, if necessary
+        if opts.color:
+            mod.setAll(color = opts.color)
+        if opts.name:
+            mod.setAll(name = opts.name)
+
+        # Write output
+        pyimod.ImodWrite(mod, file_out + '_postprocessed.mod')   
+
