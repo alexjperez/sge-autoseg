@@ -1,76 +1,117 @@
 #! /bin/bash
 
-function show_help () {
+function usage () {
 cat <<-END
-contourgen.sh
-Usage:
-------
-    -i | --input (Directory name)
-        Path to series of TIF files to be processed
-    
-    -o | --output (Directory name)
-        Path to store output model file to
+Usage: $0 [options] path_seg
 
-    -m | --mrc (MRC stack)
-        Name of MRC stack to match to
+Required Arguments:
+------------------
+path_images
+    Path that contains the stack of segmented TIF images.
 
-    -d | --del (Integer,Integer,Integer)
-        Pixel size of MRC stack to match to (X,Y,Z)
+Optional Arguments:
+------------------
+--mrc (MRC stack)
+    Name of MRC stack to match the out put model to. If no value is supplied
+    for --mrc, then both --del and --org must be supplied.
 
-    -r | --org (Integer,Integer,Integer)
-        Origin of MRC stack to match to (X,Y,Z)    
+--del (Integer,Integer,Integer)
+    Pixel size of MRC stack to match the output model to, in comma-separated
+    form for X,Y,Z (e.g. 70,70,600). Pixel size is typically in Angstroms.
 
-    -R | --point
-        Tolerance for point shaving during model generation.
-        R = [0,...,1]. Default value = 0.
+--org (Integer,Integer,Integer)
+    Origin of MRC stack to match the output model to, in comma-separated form
+    for X,Y,Z (e.g. 0,0,0).
 
-    -k | --sigma
-        Smooth the data during model generation with a kernal filter
-        whose Gaussian sigma is given by this value. Defaule value = 0.
+--output (path)
+    Output path to store temporary files and final model file to.
 
-    -h | --help
-        Display this help
+--point
+    Tolerance for point shaving during model generation.
+    R = [0,...,1]. Default value = 0.
+
+--sigma
+    Smooth the data during model generation with a kernal filter
+    whose Gaussian sigma is given by this value. Defaule value = 0.
+
+--mailto
+    Email address to send job logs to.
+    DEFAULT: None.
+
+--jobname
+    Job name to submit with.
+    DEFAULT: 'contourgen'
+
+-h | --help
+    Display this help
 END
+exit "$1"
 }
 
+function print_err () {
+    # Prints specified error message and exits with a status of 1.
+    printf "ERROR: %s\n\\n" "${1}" >&2 
+    usage 1
+}
+
+function check_mrc () {
+    # Checks the validity of an input MRC file in two ways. First, checks to
+    # see if the file exists. If so, the IMOD program header will be run on 
+    # the MRC file. If the exit status is 1, the MRC file is not valid.
+    if [[ ! -f "$1" ]]; then
+        print_err "The specified MRC file does not exist."
+    fi
+
+    header "$1" > /dev/null
+    if [[ "$?" == 1 ]]; then
+        print_err "The specified MRC file is not in the valid MRC format."
+    fi
+}
+
+# Parse optional arguments
 while :; do
     case $1 in
         -h|--help)
-            show_help
+            usage 0
             exit
             ;;
-        -i|--input)
-            path_in=$2
-            shift 2
-            continue
-            ;;
-        -o|--output)
+        --output)
             path_out=$2
             shift 2
             continue
             ;;
-        -m|--mrc)
-            mrc_stack=$2
+        --mrc)
+            file_mrc=$2
             shift 2
             continue
             ;;
-        -d|--del)
+        --del)
             del=$2
             shift 2
             continue
             ;;
-        -r|--org)
+        --org)
             org=$2
             shift 2
             continue
             ;;
-        -R|--point)
+        --point)
             pointred=$2
             shift 2
             continue
             ;;
-        -k|--sigma)
+        --sigma)
             sigma=$2
+            shift 2
+            continue
+            ;;
+        --mailto)
+            mailto=$2
+            shift 2
+            continue
+            ;;
+        --jobname)
+            jobname=$2
             shift 2
             continue
             ;;
@@ -80,59 +121,130 @@ while :; do
     shift
 done
 
-#Check for problems with input. Print help and exit if not correct
-if [[ ! $path_in ]] || [[ ! $path_out ]]; then
-    printf 'ERROR: options -i and -o must be specified\n\n' >&2
-    show_help
-    exit 1
+# Read required arguments
+if [[ "$#" -ne 1 ]]; then
+    print_err "Incorrect number of arguments."
 fi
+path_seg=${1}
 
-if [[ -n $mrc_stack ]] && [[ -n $del ]]; then
-    printf 'ERROR: Use either the -m option OR the -d and -r options\n\n' >&2
-    show_help
-    exit 1
-elif [[ -n $mrc_stack ]] && [[ -n $org ]]; then
-    printf 'ERROR: Use either the -m option OR the -d and -r options\n\n' >&2
-    show_help
-    exit 1
-elif [[ ! $mrc_stack ]] && [[ ! $del ]] && [[ -n $org ]]; then
-    printf 'ERROR: options -d and -r must both be specified\n\n' >&2
-    show_help
-    exit 1
-elif [[ ! $mrc_stack ]] && [[ -n $del ]] && [[ ! $org ]]; then
-    printf 'ERROR: options -d and -r must both be specified\n\n' >&2
-    show_help
-    exit 1
-fi
+# Set defaults, if necessary
+path_out="${path_out:-output}"
+jobname="${jobname:-contourgen}"
+pointred="${pointred:-0}"
+sigma="${sigma:-0}"
 
-source /home/aperez/.bashrc #Source IMOD
-
-#Make output directory if necessary and make temporary subdirectories
-if [[ ! -d $path_out ]]; then mkdir ${path_out}; fi
-mkdir ${path_out}/log ${path_out}/mod ${path_out}/ncont ${path_out}/txt
-
-Nslices=`ls ${path_in}/*.tif | wc -l` #Determine number of images
-
-#If the original mrc stack is supplied, extract the pixel spacing and origin information
-#from the header of that file. If not, use the user-supplied values. These values are 
-#critical to ensure the output model file aligns properly with the original mrc stack.
-if [[ -n $mrc_stack ]]; then
-    del=`${IMOD_DIR}/bin/header -pixel $mrc_stack | tr -s ' '` 
-    org=`${IMOD_DIR}/bin/header -origin $mrc_stack | tr -s ' '`
+# Check that valid MRC file information has been supplied. If an MRC stack has
+# been input using the --mrc flag, check that the MRC stack is valid and if so,
+# extract its del and org data. If no MRC stack has been input using the --mrc
+# flag, make sure that both the --del and --org flags have been supplied with 
+# data. If not, throw an error.
+if [[ ! -z "${file_mrc+x}" ]]; then
+    IFS=' '
+    check_mrc "${file_mrc}"
+    read -ra del < <(header -pixel "${file_mrc}")
+    read -ra org < <(header -origin "${file_mrc}")
 else
-    del=`echo $del | tr ',' ' '` #Replace commas with spaces
-    org=`echo $org | tr ',' ' '`
+    if [[ -z "${del+x}" ]] || [[ -z "${org+x}" ]]; then
+        print_err "If --mrc is not given, both --del and --org must be used."
+    fi
+    IFS=','
+    read -ra del < <(echo "${del}")
+    read -ra org < <(echo "${org}")
 fi
 
-#Turn off point reduction and smoothing (i.e., set their values to zero) if they are not specified
-if [[ ! $pointred ]]; then pointred=0; fi
-if [[ ! $sigma ]]; then sigma=0; fi
+# Check that del and org both have 3 values for X, Y, Z
+if [[ "${#del[@]}" -ne 3 ]]; then
+    print_err "Incorrect number of values supplied to --del."
+fi
 
-#(1) Submit tif2mod2D.q as an array job to convert TIFS to model files. 
-qsub -t 1-${Nslices} -v path_in=${path_in},path_out=${path_out},del="${del}",org="${org}",pointred=${pointred},sigma=${sigma} -o ${path_out}/log tif2mod2D.q
+if [[ "${#org[@]}" -ne 3 ]]; then
+    print_err "Incorrect number of values supplied to --org."
+fi
 
-#(2) Submit mod2point2D.q as an array job to convert model files to text files containing point listings.
-qsub -hold_jid tif2mod -t 1-${Nslices} -v path_mod=${path_out}/mod,path_txt=${path_out}/ncont,path_out=${path_out}/txt -o ${path_out}/log mod2point2D.q
+# Check that path_seg exists
+if [[ ! -d "${path_seg}" ]]; then
+    print_err "The path given by path_images does not exist."
+fi
 
-#(3) Submit point2mod3D.q to append all point listings to a single text file, and then generate a model from this using point2model.
-qsub -hold_jid mod2point -v path_out=${path_out},del="${del}",org="${org}" -o ${path_out}/log point2mod3D.q
+# Get the number of TIF files in path_seg. 
+nseg=$(ls "${path_seg}"/*.tif 2>/dev/null | wc -l)
+
+# Print run metadata
+echo "MRC pixel size (A): ${del[0]},${del[1]},${del[2]}"
+echo "MRC origin: ${org[0]},${org[1]},${org[2]}"
+echo "# of segmented images: ${nseg}"
+echo "Point reduction: ${pointred}"
+echo "Gaussian sigma: ${sigma}"
+
+# Make output directory, if necessary
+if [[ ! -d "${path_out}" ]]; then
+    mkdir "${path_out}" "${path_out}"/log "${path_out}"/err 
+    mkdir "${path_out}"/mod "${path_out}"/ncont "${path_out}"/txt
+fi
+
+# Build qsub submit string for step 1 (tif2mod2D)
+qstr1="-N ${jobname}-1 "
+qstr1+="-t 1-${nseg} "
+qstr1+="-v path_seg=${path_seg} "
+qstr1+="-v path_out=${path_out} "
+qstr1+="-v del1=${del[0]} "
+qstr1+="-v del2=${del[1]} "
+qstr1+="-v del3=${del[2]} "
+qstr1+="-v org1=${org[0]} "
+qstr1+="-v org2=${org[1]} "
+qstr1+="-v org3=${org[2]} "
+qstr1+="-v pointred=${pointred} "
+qstr1+="-v sigma=${sigma} "
+qstr1+="-o ${path_out}/log "
+qstr1+="-e ${path_out}/err "
+
+if [[ ! -z "${mailto+x}" ]]; then
+    qstr1+="-m eas -M ${mailto} "
+fi
+if [[ "$HOSTNAME" == "megashark.crbs.ucsd.edu" ]]; then
+    qstr1+="-q default.q "
+fi
+
+# Build qsub submit string for step 2 (tif2mod)
+qstr2="-hold_jid"
+qstr2+="-N ${jobname}-2 "
+qstr2+="-t 1-${nseg} "
+qstr2+="-v path_mod=${path_out}/mod "
+qstr2+="-v path_txt=${path_out}/ncont "
+qstr2+="-v path_out=${path_out}/txt "
+qstr2+="-o ${path_out}/log "
+qstr2+="-e ${path_out}/err "
+
+if [[ ! -z "${mailto+x}" ]]; then
+    qstr2+="-m eas -M ${mailto} "
+fi
+if [[ "$HOSTNAME" == "megashark.crbs.ucsd.edu" ]]; then
+    qstr2+="-q default.q "
+fi
+
+# Build qsub submit string for step 3
+qstr3="-hold_jid"
+qstr3+="-N ${jobname}-3 "
+qstr3+="-v path_out=${path_out} "
+qstr3+="-v del1=${del[0]} "
+qstr3+="-v del2=${del[1]} "
+qstr3+="-v del3=${del[2]} "
+qstr3+="-v org1=${org[0]} "
+qstr3+="-v org2=${org[1]} "
+qstr3+="-v org3=${org[2]} "
+qstr3+="-o ${path_out}/log "
+qstr3+="-e ${path_out}/err "
+
+if [[ ! -z "${mailto+x}" ]]; then
+    qstr3+="-m eas -M ${mailto} "
+fi
+if [[ "$HOSTNAME" == "megashark.crbs.ucsd.edu" ]]; then
+    qstr3+="-q default.q "
+fi
+
+echo $qstr1
+echo $qstr2
+echo $qstr3
+
+
+
