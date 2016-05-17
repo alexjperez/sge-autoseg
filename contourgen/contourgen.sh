@@ -189,7 +189,7 @@ if [[ ! -d "${path_out}" ]]; then
 fi
 
 # Build qsub submit string for step 1 (tif2mod2D)
-qstr1="-N ${jobname}-1 "
+qstr1="-N ${jobname} "
 qstr1+="-t 1-${nseg} "
 qstr1+="-v path_seg=${path_seg} "
 qstr1+="-v path_out=${path_out} "
@@ -212,15 +212,14 @@ fi
 
 # Build qsub submit string for step 2 (tif2mod)
 qstr2="-hold_jid"
-qstr2+="-N ${jobname}-2 "
+qstr2+="-N ${jobname}2 "
 qstr2+="-t 1-${nseg} "
 qstr2+="-v path_mod=${path_out}/mod "
 qstr2+="-v path_txt=${path_out}/ncont "
 qstr2+="-v path_out=${path_out}/txt "
 qstr2+="-o ${path_out}/log "
 qstr2+="-e ${path_out}/err "
-if [[ ! -z "${mailto+x}" ]]; then
-    qstr2+="-m eas -M ${mailto} "
+if [[ ! -z "${mailto+x}" ]]; then qstr2+="-m eas -M ${mailto} "
 fi
 if [[ "$HOSTNAME" == "megashark.crbs.ucsd.edu" ]]; then
     qstr2+="-q default.q "
@@ -228,7 +227,7 @@ fi
 
 # Build qsub submit string for step 3 (mod2point)
 qstr3="-hold_jid"
-qstr3+="-N ${jobname}-3 "
+qstr3+="-N ${jobname}3 "
 qstr3+="-v path_out=${path_out} "
 qstr3+="-v del1=${del[0]} "
 qstr3+="-v del2=${del[1]} "
@@ -246,6 +245,4 @@ if [[ "$HOSTNAME" == "megashark.crbs.ucsd.edu" ]]; then
 fi
 
 # Submit jobs
-#qsub ${qstr1} tif2mod2D.q
-#qsub ${qstr2} mod2point2D.q
-#qsub ${qstr3} point2mod3D.q
+eval qsub "${qstr1}" tif2mod2D.q
