@@ -42,6 +42,8 @@ base=${base%.*}
 tif2mrc "${file_in}" "${path_out}"/mod/"${base}".mrc
 
 #STEP (2)
+del="${del1} ${del2} ${del3}"
+org="${org1} ${org2} ${org3}"
 echo -e "${path_out}/mod/${base}.mrc\ndel\n${del}\norg\n${org}\ndone\n" | alterheader
 
 #STEP (3)
