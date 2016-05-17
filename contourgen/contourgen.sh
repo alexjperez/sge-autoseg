@@ -1,13 +1,19 @@
 #! /bin/bash
 
+# Wrapper script that submits an SGE job for generating a model file with IMOD
+# contours about a stack of segmented TIF images. This is essentialy a 
+# parallelization of imodauto that can run on SGE clusters.
+#
+# Written by Alex Perez - alexjperez@gmail.com
+
+
 function usage () {
 cat <<-END
 Usage: $0 [options] path_seg
 
 Required Arguments:
 ------------------
-path_images
-    Path that contains the stack of segmented TIF images.
+path_images Path that contains the stack of segmented TIF images.
 
 Optional Arguments:
 ------------------
@@ -197,7 +203,6 @@ qstr1+="-v pointred=${pointred} "
 qstr1+="-v sigma=${sigma} "
 qstr1+="-o ${path_out}/log "
 qstr1+="-e ${path_out}/err "
-
 if [[ ! -z "${mailto+x}" ]]; then
     qstr1+="-m eas -M ${mailto} "
 fi
@@ -214,7 +219,6 @@ qstr2+="-v path_txt=${path_out}/ncont "
 qstr2+="-v path_out=${path_out}/txt "
 qstr2+="-o ${path_out}/log "
 qstr2+="-e ${path_out}/err "
-
 if [[ ! -z "${mailto+x}" ]]; then
     qstr2+="-m eas -M ${mailto} "
 fi
@@ -222,7 +226,7 @@ if [[ "$HOSTNAME" == "megashark.crbs.ucsd.edu" ]]; then
     qstr2+="-q default.q "
 fi
 
-# Build qsub submit string for step 3
+# Build qsub submit string for step 3 (mod2point)
 qstr3="-hold_jid"
 qstr3+="-N ${jobname}-3 "
 qstr3+="-v path_out=${path_out} "
@@ -234,7 +238,6 @@ qstr3+="-v org2=${org[1]} "
 qstr3+="-v org3=${org[2]} "
 qstr3+="-o ${path_out}/log "
 qstr3+="-e ${path_out}/err "
-
 if [[ ! -z "${mailto+x}" ]]; then
     qstr3+="-m eas -M ${mailto} "
 fi
@@ -242,9 +245,7 @@ if [[ "$HOSTNAME" == "megashark.crbs.ucsd.edu" ]]; then
     qstr3+="-q default.q "
 fi
 
-echo $qstr1
-echo $qstr2
-echo $qstr3
-
-
-
+# Submit jobs
+#qsub ${qstr1} tif2mod2D.q
+#qsub ${qstr2} mod2point2D.q
+#qsub ${qstr3} point2mod3D.q
