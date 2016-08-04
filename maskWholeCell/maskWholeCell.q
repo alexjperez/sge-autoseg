@@ -1,6 +1,8 @@
 #! /bin/bash
 
 #$ -S /bin/bash
+#$ -N mask
+#$ -m eas
 #$ -cwd
 #$ -V
 
@@ -21,13 +23,34 @@ fi
 # Get the cell file name
 file_mod=$(ls "${path_mod}"/*.mod | sed -n ''"${SGE_TASK_ID}"'p')
 
+# Print job specific details
+echo "Host: " "${SGE_O_HOST}"
+echo "Node: " "${HOSTNAME}"
+echo "Job ID: " "${JOB_ID}"
+echo "Task ID: " "${SGE_TASK_ID}"
+
 printf "Masking with file %s\n\n" "${file_mod}"
 
-# If on megashark, use the Python versioninstalled in /opt to import numpy
+# If on megashark, use the Python version installed in /opt to import numpy
 # and scipy, which are not installed for /usr/bin/python
-if [[ "$HOSTNAME" == "megashark.crbs.ucsd.edu" ]]; then
+#if [[ "$HOSTNAME" == "megashark.crbs.ucsd.edu" ]]; then
+if [[ "$SGE_O_HOST" == "megashark.crbs.ucsd.edu" ]]; then
+    echo "Running on megashark. Updating Python path."
     export PYTHONPATH="/opt/python/bin/python":"$PYTHONPATH"
     export PATH="/opt/python/bin":"$PATH"
 fi
 
-./maskWholeCell.py --output "${path_cell}" "${file_mrc}" "${file_mod}" "${path_seg}"
+which python
+
+./maskWholeCell.py \
+    --output "${path_cell}" \
+    --color '0,1,0' \
+    --filterByNContours 3 \
+    --imodautor 0.5 \
+    --mergeAll \
+    --name 'Mitochondria' \
+    --runImodfillin \
+    --runPostprocessing \
+    "${file_mrc}" \
+    "${file_mod}" \
+    "${path_seg}"
