@@ -166,7 +166,16 @@ done
 
 # Create output directory, if necessary
 if [[ ! -d "${path_out}" ]]; then 
-    mkdir "${path_out}" "${path_out}"/log "${path_out}"/err
+    mkdir "${path_out}" 
+    mkdir "${path_out}"/err
+fi
+
+if [[ ! -d "${path_out}"/log ]]; then
+    mkdir "${path_out}"/log
+fi
+
+if [[ ! -d "${path_out}"/err ]]; then
+    mkdir "${path_out}"/err
 fi
 
 # Build qsub submit string
@@ -183,9 +192,13 @@ if [[ ! -z "${mailto+x}" ]]; then
     qstr+="-m eas -M ${mailto} "
 fi
 
-# Specify certain queues to submit to, depending on the cluster
+# Specify certain queues to submit to, depending on the cluster. Also, exclude
+# certain nodes if needed.
+# NOTE: megashark-4-29.local and hammerhead have problems importing scipy. Not
+# sure why.
 if [[ "$HOSTNAME" == "megashark.crbs.ucsd.edu" ]]; then
     qstr+="-q default.q "
+    qstr+="-l h=!(megashark-4-29.local|hammerhead.crbs.ucsd.edu)"
 fi
 
 # Submit job
